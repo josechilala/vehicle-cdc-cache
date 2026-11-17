@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: vehicle-cache
+
+resources:
+  - kubernetes/namespace.yaml
+  - kubernetes/postgres.yaml
+  - kubernetes/kafka.yaml
+  - kubernetes/connect.yaml
+  - kubernetes/valkey.yaml
+  - kubernetes/replay-baseline.yaml
+
+configMapGenerator:
+  - name: postgres-init
+    files:
+      - postgres/init.sql
+      - postgres/init.sh
+  - name: debezium-connector
+    files:
+      - debezium/connector.json
+    options:
+      disableNameSuffixHash: true

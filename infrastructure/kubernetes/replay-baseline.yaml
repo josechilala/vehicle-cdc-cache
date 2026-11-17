@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cdc-replay-baseline
+data:
+  vehicles.topic: vehicle_cdc.public.vehicles
+  vehicles.partition-offsets: "0=0,1=0,2=0"
+  positions.topic: vehicle_cdc.public.positions
+  positions.partition-offsets: "0=0,1=0,2=0"

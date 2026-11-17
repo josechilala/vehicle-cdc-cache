@@ -1,0 +1,9 @@
+version: v2beta1
+name: vehicle-cache
+
+deployments:
+  infrastructure:
+    kubectl:
+      manifests:
+        - infrastructure
+      kustomize: true

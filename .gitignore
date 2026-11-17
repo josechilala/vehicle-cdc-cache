@@ -1,0 +1,33 @@
+# Build outputs
+**/bin/
+**/obj/
+**/out/
+**/publish/
+
+# IDE and user-specific files
+.vs/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Test and coverage outputs
+TestResults/
+coverage/
+coverage.*.json
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+secrets/
+
+# devenv and DevSpace local state
+.devenv/
+.devspace/
+.direnv/
+.envrc
+devenv.local.yaml
