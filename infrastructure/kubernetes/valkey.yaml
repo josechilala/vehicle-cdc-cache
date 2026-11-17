@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: valkey
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: valkey
+  template:
+    metadata:
+      labels:
+        app: valkey
+        app.kubernetes.io/part-of: vehicle-cache
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+        - name: valkey
+          image: valkey/valkey:8.1.11
+          imagePullPolicy: IfNotPresent
+          args:
+            - valkey-server
+            - --appendonly
+            - "yes"
+            - --appendfsync
+            - everysec
+            - --save
+            - ""
+            - --maxmemory
+            - 128mb
+            - --maxmemory-policy
+            - noeviction
+          ports:
+            - name: valkey
+              containerPort: 6379
+          startupProbe:
+            exec:
+              command:
+                - valkey-cli
+                - ping
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 120
+          readinessProbe:
+            exec:
+              command:
+                - valkey-cli
+                - ping
+            periodSeconds: 5
+            timeoutSeconds: 10
+            failureThreshold: 24
+          livenessProbe:
+            exec:
+              command:
+                - valkey-cli
+                - ping
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: valkey-data
+              mountPath: /data
+      volumes:
+        - name: valkey-data
+          persistentVolumeClaim:
+            claimName: valkey-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: valkey-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey
+spec:
+  type: ClusterIP
+  selector:
+    app: valkey
+  ports:
+    - name: valkey
+      port: 6379
+      targetPort: 6379

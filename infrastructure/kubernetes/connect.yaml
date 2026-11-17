@@ -1,0 +1,156 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-connect
+spec:
+  type: ClusterIP
+  selector:
+    app: kafka-connect
+  ports:
+    - name: rest
+      port: 8083
+      targetPort: 8083
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-connect
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: kafka-connect
+  template:
+    metadata:
+      labels:
+        app: kafka-connect
+        app.kubernetes.io/part-of: vehicle-cache
+    spec:
+      initContainers:
+        - name: create-topics
+          image: apache/kafka:3.9.2
+          command:
+            - /bin/bash
+            - -ec
+          args:
+            - |
+              ready=false
+              for attempt in $(seq 1 240); do
+                if /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list >/dev/null 2>&1; then
+                  ready=true
+                  break
+                fi
+                sleep 5
+              done
+              if [ "$ready" != true ]; then
+                echo "Kafka did not become ready within 20 minutes" >&2
+                exit 1
+              fi
+              for topic in vehicle_cdc.public.vehicles vehicle_cdc.public.positions; do
+                /opt/kafka/bin/kafka-topics.sh \
+                  --bootstrap-server kafka:9092 \
+                  --create --if-not-exists \
+                  --topic "$topic" \
+                  --partitions 3 \
+                  --replication-factor 1 \
+                  --config cleanup.policy=delete \
+                  --config retention.ms=-1 \
+                  --config retention.bytes=-1
+              done
+              /opt/kafka/bin/kafka-topics.sh \
+                --bootstrap-server kafka:9092 \
+                --create --if-not-exists \
+                --topic vehicle_cdc.transaction \
+                --partitions 1 \
+                --replication-factor 1
+              for topic in vehicle-cache-connect-configs vehicle-cache-connect-offsets vehicle-cache-connect-status; do
+                /opt/kafka/bin/kafka-topics.sh \
+                  --bootstrap-server kafka:9092 \
+                  --create --if-not-exists \
+                  --topic "$topic" \
+                  --partitions 1 \
+                  --replication-factor 1 \
+                  --config cleanup.policy=compact
+              done
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+      containers:
+        - name: kafka-connect
+          image: debezium/connect:3.0.0.Final
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: BOOTSTRAP_SERVERS
+              value: kafka:9092
+            - name: GROUP_ID
+              value: vehicle-cache-connect
+            - name: CONFIG_STORAGE_TOPIC
+              value: vehicle-cache-connect-configs
+            - name: OFFSET_STORAGE_TOPIC
+              value: vehicle-cache-connect-offsets
+            - name: STATUS_STORAGE_TOPIC
+              value: vehicle-cache-connect-status
+            - name: CONFIG_STORAGE_REPLICATION_FACTOR
+              value: "1"
+            - name: OFFSET_STORAGE_REPLICATION_FACTOR
+              value: "1"
+            - name: OFFSET_STORAGE_PARTITIONS
+              value: "1"
+            - name: STATUS_STORAGE_REPLICATION_FACTOR
+              value: "1"
+            - name: STATUS_STORAGE_PARTITIONS
+              value: "1"
+            - name: KEY_CONVERTER
+              value: org.apache.kafka.connect.json.JsonConverter
+            - name: VALUE_CONVERTER
+              value: org.apache.kafka.connect.json.JsonConverter
+            - name: KEY_CONVERTER_SCHEMAS_ENABLE
+              value: "false"
+            - name: VALUE_CONVERTER_SCHEMAS_ENABLE
+              value: "false"
+            - name: REST_ADVERTISED_HOST_NAME
+              value: kafka-connect
+            - name: REST_PORT
+              value: "8083"
+            - name: CONNECT_PLUGIN_PATH
+              value: /kafka/connect
+            - name: HEAP_OPTS
+              value: "-Xms256M -Xmx512M"
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:ActiveProcessorCount=1"
+          ports:
+            - name: rest
+              containerPort: 8083
+          startupProbe:
+            httpGet:
+              path: /
+              port: rest
+            periodSeconds: 10
+            timeoutSeconds: 15
+            failureThreshold: 120
+          readinessProbe:
+            httpGet:
+              path: /connectors
+              port: rest
+            periodSeconds: 5
+            timeoutSeconds: 15
+            failureThreshold: 24
+          livenessProbe:
+            httpGet:
+              path: /
+              port: rest
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi

@@ -1,0 +1,134 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        app.kubernetes.io/part-of: vehicle-cache
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17.12
+          imagePullPolicy: IfNotPresent
+          args:
+            - postgres
+            - -c
+            - wal_level=logical
+            - -c
+            - max_replication_slots=10
+            - -c
+            - max_wal_senders=10
+          env:
+            - name: POSTGRES_DB
+              value: vehicle_cache
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+            - name: DEBEZIUM_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: DEBEZIUM_PASSWORD
+            - name: WRITER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: WRITER_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+          startupProbe:
+            exec:
+              command:
+                - pg_isready
+                - --host=127.0.0.1
+                - --username=postgres
+                - --dbname=postgres
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 120
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - --host=127.0.0.1
+                - --username=postgres
+                - --dbname=postgres
+            periodSeconds: 5
+            timeoutSeconds: 10
+            failureThreshold: 24
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - --host=127.0.0.1
+                - --username=postgres
+                - --dbname=postgres
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 768Mi
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: postgres-init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+            - name: postgres-schema
+              mountPath: /bootstrap
+              readOnly: true
+      volumes:
+        - name: postgres-init
+          configMap:
+            name: postgres-init
+            defaultMode: 0755
+            items:
+              - key: init.sh
+                path: 10-init.sh
+        - name: postgres-schema
+          configMap:
+            name: postgres-init
+            items:
+              - key: init.sql
+                path: init.sql
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 2Gi

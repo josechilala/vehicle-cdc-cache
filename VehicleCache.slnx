@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PositionWriter/PositionWriter.csproj" />
+    <Project Path="src/VehicleCache.Worker/VehicleCache.Worker.csproj" />
+    <Project Path="src/VehicleWriter/VehicleWriter.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/VehicleCache.IntegrationTests/VehicleCache.IntegrationTests.csproj" />
+    <Project Path="tests/VehicleCache.UnitTests/VehicleCache.UnitTests.csproj" />
+  </Folder>
+</Solution>
